@@ -152,7 +152,7 @@ class SplitTests(unittest.TestCase):
         result = preview_response('Нет! Мы пришли.'.split(), raw, 99, 'stop')
         self.assertEqual(result['lines'], ['Нет!', 'Мы пришли.'])
 
-    def test_group_variant_keeps_breaks_and_maps_warnings_to_packed_captions(self):
+    def test_group_warning_does_not_flag_a_caption_that_resolves_the_issue(self):
         text = 'Мы были в магазине'
         raw = json.dumps({'groups': ['Мы были в', 'магазине']})
         result = preview_response(text.split(), raw, 24, 'stop')
@@ -161,8 +161,34 @@ class SplitTests(unittest.TestCase):
         self.assertEqual(result['lines'], [text])
         self.assertEqual(result['ends'], [4])
         self.assertEqual(result['group_quality_warnings'][0]['index'], 1)
-        self.assertEqual(result['quality_warnings'][0]['index'], 1)
+        self.assertEqual(result['quality_warnings'], [])
         self.assertEqual(result['raw_response'], raw)
+
+    def test_resolved_internal_chunk_endings_do_not_flag_user_examples(self):
+        for groups in (['вошли в', 'нефтяную историю'], ['в будущем или', 'прошлом']):
+            with self.subTest(groups=groups):
+                text = ' '.join(groups)
+                result = preview_response(text.split(), json.dumps({'groups': groups}), 24, 'stop')
+                self.assertEqual(result['lines'], [text])
+                self.assertTrue(result['group_quality_warnings'])
+                self.assertEqual(result['quality_warnings'], [])
+
+    def test_unresolved_caption_ending_has_exactly_one_warning(self):
+        groups = ['стало одной из', 'важных точек развития']
+        result = preview_response(' '.join(groups).split(), json.dumps({'groups': groups}), 24, 'stop')
+        self.assertEqual(result['lines'], groups)
+        self.assertEqual(result['quality_warnings'], [{'index': 1, 'reason': 'связующее слово в конце'}])
+
+    def test_three_word_chunk_limit_does_not_apply_to_packed_captions(self):
+        text = 'мы были в саду'
+        result = preview_response(text.split(), json.dumps({'groups': [text]}), 24, 'stop')
+        self.assertTrue(result['group_quality_warnings'])
+        self.assertEqual(result['quality_warnings'], [])
+
+    def test_last_caption_with_dangling_word_is_also_flagged(self):
+        text = 'мы были в'
+        result = preview_response(text.split(), json.dumps({'groups': [text]}), 24, 'stop')
+        self.assertEqual(result['quality_warnings'], [{'index': 1, 'reason': 'связующее слово в конце'}])
 
     def test_long_model_chunk_is_visible_and_can_be_applied_without_losing_words(self):
         text = 'сюда ещё можно переехать жить'

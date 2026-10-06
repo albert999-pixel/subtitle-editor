@@ -119,14 +119,8 @@ def preview_response(words, raw_response, max_chars, finish_reason):
     lines, ends = _pack_group_ends(words, ends, max_chars)
     overlong = [{"index": i + 1, "length": len(text)} for i, text in enumerate(lines) if len(text) > max_chars]
     quality_warnings = [{"index": i + 1, "reason": "связующее слово в конце"}
-                        for i, text in enumerate(lines[:-1])
+                        for i, text in enumerate(lines)
                         if text.split()[-1].casefold().strip('.,!?;:') in DANGLING_WORDS]
-    for warning in group_quality_warnings:
-        caption_index = next(i for i, end in enumerate(ends, 1)
-                             if end >= group_ends[warning["index"] - 1])
-        mapped = {"index": caption_index, "reason": warning["reason"]}
-        if mapped not in quality_warnings:
-            quality_warnings.append(mapped)
     return {"lines": lines, "ends": ends, "model": MODEL, "overlong": overlong,
             "max_chars": max_chars, "groups": groups, "group_ends": group_ends,
             "group_quality_warnings": group_quality_warnings,
