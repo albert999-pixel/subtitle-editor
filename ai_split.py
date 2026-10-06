@@ -54,26 +54,6 @@ DANGLING_WORDS = {'в', 'на', 'с', 'к', 'из', 'по', 'для', 'о', 'о�
                   'за', 'над', 'под', 'при', 'без', 'и', 'а', 'но', 'или', 'чтобы', 'не'}
 
 
-def _avoid_dangling_ends(words, ends):
-    """Move connecting words to the following caption, without changing the text."""
-    adjusted, moved = [], 0
-    previous = 0
-    for end in ends[:-1]:
-        cut = end
-        while cut > previous:
-            token = words[cut - 1].casefold()
-            if token.endswith(('.', '!', '?', '…')) or token.strip(',;:«»"()') not in DANGLING_WORDS:
-                break
-            cut -= 1
-        if cut != end:
-            moved += 1
-        if cut > previous:
-            adjusted.append(cut)
-            previous = cut
-    adjusted.append(len(words))
-    return adjusted, moved
-
-
 def preview_response(words, raw_response, max_chars, finish_reason):
     """Show the raw answer even on failure; apply breaks only to original text."""
     warnings = []
@@ -102,9 +82,6 @@ def preview_response(words, raw_response, max_chars, finish_reason):
         warnings.append("Строки без отдельного диапазона исходных слов объединены с соседними.")
     if not ends or ends[-1] != len(words):
         ends.append(len(words))
-    ends, moved = _avoid_dangling_ends(words, ends)
-    if moved:
-        warnings.append(f"Исправлены окончания {moved} титров: связующие слова перенесены в следующий титр. Исходный ответ модели не изменён.")
     lines = validate_boundaries(words, ends)
     overlong = [{"index": i + 1, "length": len(text)} for i, text in enumerate(lines) if len(text) > max_chars]
     quality_warnings = [{"index": i + 1, "reason": "связующее слово в конце"}

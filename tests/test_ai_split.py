@@ -109,23 +109,24 @@ class SplitTests(unittest.TestCase):
             self.assertEqual(result['lines'], ['весь текст'])
             self.assertTrue(result['warnings'])
 
-    def test_dangling_words_move_forward_without_losing_text(self):
-        result = preview_response(['мы', 'были', 'в', 'магазине'],
-                                  '{"lines":["мы были в","магазине"]}', 4, 'stop')
-        self.assertEqual(result['lines'], ['мы были', 'в магазине'])
-        self.assertTrue(result['warnings'])
-        self.assertEqual(result['raw_response'], '{"lines":["мы были в","магазине"]}')
+    def test_model_breaks_are_not_moved_by_a_preposition_heuristic(self):
+        raw = '{"lines":["мы были в","магазине"]}'
+        result = preview_response(['мы', 'были', 'в', 'магазине'], raw, 4, 'stop')
+        self.assertEqual(result['lines'], ['мы были в', 'магазине'])
+        self.assertEqual(result['raw_response'], raw)
+        self.assertEqual(result['warnings'], [])
+        self.assertEqual(result['quality_warnings'][0]['index'], 1)
         self.assertEqual(len(result['overlong']), 2)
 
-    def test_multiple_connecting_words_and_empty_ranges_are_handled(self):
-        for words, proposed, expected in [
-            (['и', 'в', 'магазине'], ['и', 'в', 'магазине'], ['и в магазине']),
-            (['он', 'хотел', 'но', 'не', 'смог'], ['он хотел но не', 'смог'], ['он хотел', 'но не смог']),
-            (['буква', 'И.', 'дальше'], ['буква И.', 'дальше'], ['буква И.', 'дальше']),
+    def test_semantic_groups_survive_preview_unchanged(self):
+        for text, lines in [
+            ('здесь тестировали автоматизацию добычи', ['здесь тестировали', 'автоматизацию добычи']),
+            ('сюда ещё можно переехать жить', ['сюда ещё можно', 'переехать жить']),
+            ('Нет! Мы обсуждали ремонт оборудования.', ['Нет!', 'Мы обсуждали', 'ремонт оборудования.']),
         ]:
-            result = preview_response(words, json.dumps({'lines': proposed}), 24, 'stop')
-            self.assertEqual(result['lines'], expected)
-            self.assertEqual(' '.join(result['lines']).split(), words)
+            result = preview_response(text.split(), json.dumps({'lines': lines}), 24, 'stop')
+            self.assertEqual(result['lines'], lines)
+            self.assertEqual(result['warnings'], [])
 
     def test_good_response_is_not_modified(self):
         result = preview_response(['один', 'два', 'три'], '{"lines":["один","два три"]}', 24, 'stop')
