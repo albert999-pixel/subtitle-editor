@@ -7,7 +7,7 @@ def transcribe_with_local_model(tmp_path, model_path):
 
     Аргументы:
         tmp_path   — путь к аудиофайлу на диске
-        model_path — путь к папке с локальной моделью, или "base" для базовой
+        model_path — путь к папке с установленной локальной моделью
 
     Возвращает:
         список слов: [{"word": "...", "start": float, "end": float}, ...]

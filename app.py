@@ -143,7 +143,9 @@ async def transcribe(
             raise HTTPException(400, "Сначала сохрани API-ключ Groq в настройках")
         if groq_model not in GROQ_MODELS:
             raise HTTPException(400, "Неизвестная модель Groq")
-    elif model:
+    else:
+        if not model:
+            raise HTTPException(400, "Скачай и выбери локальную модель или переключись на Groq")
         candidate = (MODELS_DIR / model).resolve()
         if candidate.parent != MODELS_DIR.resolve() or not (candidate / "config.json").is_file():
             raise HTTPException(400, "Локальная модель не найдена")
@@ -166,7 +168,7 @@ async def transcribe(
         """Выполняется в отдельном потоке чтобы не блокировать сервер."""
         global transcription_status
         try:
-            model_path = str(MODELS_DIR / model) if model else "base"
+            model_path = str(MODELS_DIR / model)
             if provider == "groq":
                 words = transcribe_with_groq(tmp_path, config["GROQ_API_KEY"], groq_model)
             else:

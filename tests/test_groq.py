@@ -50,7 +50,7 @@ class GroqTests(unittest.TestCase):
         self.assertFalse(self.client.get('/api/config').json()['groq_key_set'])
 
     def test_missing_key_and_invalid_provider_fail_before_processing(self):
-        for data in ({'provider':'groq'}, {'provider':'other'}):
+        for data in ({'provider':'groq'}, {'provider':'other'}, {'provider':'local'}):
             r = self.client.post('/api/transcribe', files={'file':('test.wav', b'audio')}, data=data)
             self.assertEqual(r.status_code, 400)
             self.assertEqual(application.transcription_status['status'], 'idle')
@@ -69,9 +69,14 @@ class GroqTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/audio').content, b'audio')
 
     def test_local_mode_does_not_call_cloud(self):
-        with patch.object(application, 'transcribe_with_local_model', return_value=[]) as local, \
+        model = self.root / 'test-model'
+        model.mkdir()
+        (model / 'config.json').write_text('{}')
+        with patch.object(application, 'MODELS_DIR', self.root), \
+             patch.object(application, 'transcribe_with_local_model', return_value=[]) as local, \
              patch.object(application, 'transcribe_with_groq') as cloud:
-            self.client.post('/api/transcribe', files={'file':('test.wav', b'audio')})
+            self.client.post('/api/transcribe', files={'file':('test.wav', b'audio')},
+                             data={'provider': 'local', 'model': 'test-model'})
             local.assert_called_once()
             cloud.assert_not_called()
 
