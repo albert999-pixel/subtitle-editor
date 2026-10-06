@@ -1,4 +1,4 @@
-"""Ask for readable captions, then project their breaks onto the original words."""
+"""Find semantic groups with an LLM, then fit whole groups into captions locally."""
 import json
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -54,6 +54,29 @@ DANGLING_WORDS = {'в', 'на', 'с', 'к', 'из', 'по', 'для', 'о', 'о�
                   'за', 'над', 'под', 'при', 'без', 'и', 'а', 'но', 'или', 'чтобы', 'не'}
 
 
+def _pack_group_ends(words, group_ends, max_chars):
+    """Merge adjacent whole groups; never split a group to meet the length target."""
+    captions, caption_ends = [], []
+    start = 0
+    current = ""
+    previous_end = 0
+    for end in group_ends:
+        group = " ".join(words[start:end])
+        combined = current + " " + group
+        if current and len(combined) <= max_chars and not current.endswith(('.', '!', '?', '…', ',', ';', ':')):
+            current = combined
+        else:
+            if current:
+                captions.append(current)
+                caption_ends.append(previous_end)
+            current = group
+        start = previous_end = end
+    if current:
+        captions.append(current)
+        caption_ends.append(previous_end)
+    return captions, caption_ends
+
+
 def preview_response(words, raw_response, max_chars, finish_reason):
     """Show the raw answer even on failure; apply breaks only to original text."""
     warnings = []
@@ -61,12 +84,12 @@ def preview_response(words, raw_response, max_chars, finish_reason):
         warnings.append(f"Ответ завершился с причиной {finish_reason or 'не указана'}; показан полученный фрагмент.")
     try:
         data = json.loads(raw_response)
-        proposals = data.get("lines") if isinstance(data, dict) else None
+        proposals = data.get("groups") if isinstance(data, dict) else None
     except (ValueError, TypeError):
         proposals = None
         warnings.append("Ответ не удалось разобрать как JSON. Исходный ответ показан ниже.")
     if not isinstance(proposals, list):
-        warnings.append("Нет списка lines. Для предпросмотра весь текст оставлен одним титром.")
+        warnings.append("Нет списка groups. Для предпросмотра весь текст оставлен одним титром.")
         proposals = []
     usable = [line for line in proposals if isinstance(line, str) and line.split()]
     if len(usable) != len(proposals):
@@ -82,13 +105,14 @@ def preview_response(words, raw_response, max_chars, finish_reason):
         warnings.append("Строки без отдельного диапазона исходных слов объединены с соседними.")
     if not ends or ends[-1] != len(words):
         ends.append(len(words))
-    lines = validate_boundaries(words, ends)
+    groups = validate_boundaries(words, ends)
+    lines, ends = _pack_group_ends(words, ends, max_chars)
     overlong = [{"index": i + 1, "length": len(text)} for i, text in enumerate(lines) if len(text) > max_chars]
     quality_warnings = [{"index": i + 1, "reason": "связующее слово в конце"}
                         for i, text in enumerate(lines[:-1])
                         if text.split()[-1].casefold().strip('.,!?;:') in DANGLING_WORDS]
     return {"lines": lines, "ends": ends, "model": MODEL, "overlong": overlong,
-            "max_chars": max_chars, "warnings": warnings, "quality_warnings": quality_warnings,
+            "max_chars": max_chars, "groups": groups, "warnings": warnings, "quality_warnings": quality_warnings,
             "raw_response": raw_response, "finish_reason": finish_reason}
 
 
@@ -99,17 +123,17 @@ def suggest_split(texts, max_chars, api_key, previous_ends=None):
     if len(words) > MAX_WORDS or len(" ".join(words)) > MAX_TEXT_CHARS:
         raise ValueError("Экспериментальный режим принимает до 600 слов и 10 000 символов за один запрос.")
     from groq import Groq, APIConnectionError, APIStatusError
-    schema = {"type": "object", "properties": {"lines": {"type": "array", "items": {"type": "string"}}},
-              "required": ["lines"], "additionalProperties": False}
+    schema = {"type": "object", "properties": {"groups": {"type": "array", "items": {"type": "string"}}},
+              "required": ["groups"], "additionalProperties": False}
     try:
         prompt = PROMPT_PATH.read_text(encoding="utf-8")
     except OSError:
         raise ValueError("Не удалось прочитать prompts/subtitle_split.md") from None
-    previous_lines = None
+    previous_groups = None
     if previous_ends:
         # Regeneration gets readable phrases rather than another numerical pattern.
         try:
-            previous_lines = validate_boundaries(words, previous_ends)
+            previous_groups = validate_boundaries(words, previous_ends)
         except ValueError:
             pass
     try:
@@ -117,8 +141,8 @@ def suggest_split(texts, max_chars, api_key, previous_ends=None):
             result = client.chat.completions.create(
                 model=MODEL,
                 messages=[{"role": "system", "content": prompt},
-                          {"role": "user", "content": json.dumps({"max_chars": max_chars, "text": " ".join(words), "previous_lines": previous_lines}, ensure_ascii=False)}],
-                response_format={"type": "json_schema", "json_schema": {"name": "caption_lines", "strict": True, "schema": schema}},
+                          {"role": "user", "content": json.dumps({"text": " ".join(words), "previous_groups": previous_groups}, ensure_ascii=False)}],
+                response_format={"type": "json_schema", "json_schema": {"name": "semantic_groups", "strict": True, "schema": schema}},
                 reasoning_effort="low",
                 temperature=0.35,
                 max_completion_tokens=4096,

@@ -525,7 +525,7 @@ async function requestAISplit() {
       preview.appendChild(item);
     });
     document.getElementById('aiActions').style.display = 'flex';
-    status.textContent = `Предпросмотр титров: ${data.lines.length}.${data.warnings?.length ? " Есть корректировки; смотри предупреждения и исходный ответ." : ""} Все слова сохранены. Превышений лимита ${snapshot.max}: ${(data.overlong || []).length}. Строк со связующим словом в конце: ${(data.quality_warnings || []).length}. Можно применить любой вариант или перегенерировать.`;
+    status.textContent = `Предпросмотр титров: ${data.lines.length}. Смысловых групп: ${(data.groups || data.lines).length}.${data.warnings?.length ? " Есть корректировки; смотри предупреждения и исходный ответ." : ""} Все слова сохранены. Превышений лимита ${snapshot.max}: ${(data.overlong || []).length}. Строк со связующим словом в конце: ${(data.quality_warnings || []).length}. Можно применить любой вариант или перегенерировать.`;
   } catch (error) {
     status.textContent = error.message;
   } finally {

@@ -527,7 +527,7 @@
     </div>
     <div id="aiPanel" style="display:none;flex:1;min-height:0;padding:20px 20px 90px;overflow:auto">
       <h3 style="font-size:15px">Смысловая разбивка · GPT OSS 120B</h3>
-      <p class="settings-note">Один запрос на весь текст редактора. Текст отправляется в Groq; слова и их порядок сохраняются. До 600 слов. Лимит берётся из поля «Макс. символов».</p>
+      <p class="settings-note">Один запрос на весь текст редактора. Groq выделяет смысловые группы; приложение объединяет их под лимит «Макс. символов», не разрезая словосочетания. Длинные группы остаются целыми с предупреждением. До 600 слов; текст отправляется в Groq.</p>
       <p class="settings-note">Промпт можно изменить в файле prompts/subtitle_split.md. Результат сначала появится здесь, ручные титры заменятся только после применения.</p>
       <button class="btn btn-yellow" id="aiSuggest" onclick="requestAISplit()">Предложить разбивку</button>
       <p id="aiStatus" class="settings-note" role="status"></p>
