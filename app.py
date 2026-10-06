@@ -13,6 +13,7 @@ from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from ai_split import suggest_split
 
@@ -27,6 +28,21 @@ WEB_DIR     = SCRIPT_DIR / "web"
 ENV_PATH   = Path(os.environ.get("SUBTITLE_CONFIG_DIR", SCRIPT_DIR)) / ".env"
 TEMP_DIR   = Path(os.environ.get("SUBTITLE_TEMP_DIR", SCRIPT_DIR / "temp"))
 MODELS_DIR = Path(os.environ.get("SUBTITLE_MODELS_DIR", SCRIPT_DIR / "models"))
+
+AUDIO_EXTENSIONS = {".mp3", ".m4a", ".mp4", ".wav", ".flac", ".ogg", ".webm"}
+AUDIO_FORMAT_MESSAGE = "Выбери аудиофайл: MP3, M4A, MP4, WAV, FLAC, OGG или WEBM. SRT — файл субтитров, его нельзя транскрибировать."
+
+
+def validate_audio(path):
+    """Read an audio frame before sending an upload to a transcription provider."""
+    import av
+    try:
+        with av.open(str(path)) as container:
+            if not container.streams.audio or next(container.decode(audio=0), None) is None:
+                raise ValueError()
+    except (av.FFmpegError, ValueError):
+        raise HTTPException(400, "Файл не содержит читаемого аудио или повреждён. Выбери другой аудиофайл.") from None
+
 
 # ─── Инициализация FastAPI и модулей ───────────────────────
 app = FastAPI()
@@ -136,6 +152,11 @@ async def transcribe(
     config = load_config()
     if transcription_status["status"] == "processing":
         raise HTTPException(409, "Дождись окончания текущей транскрибации")
+    audio_ext = Path(file.filename or "").suffix.lower()
+    if audio_ext not in AUDIO_EXTENSIONS:
+        raise HTTPException(400, AUDIO_FORMAT_MESSAGE)
+    if not file.size:
+        raise HTTPException(400, "Файл пустой. Выбери аудиофайл с записью.")
     if provider not in ("local", "groq"):
         raise HTTPException(400, "Неизвестный режим транскрибации")
     if provider == "groq":
@@ -150,17 +171,23 @@ async def transcribe(
         if candidate.parent != MODELS_DIR.resolve() or not (candidate / "config.json").is_file():
             raise HTTPException(400, "Локальная модель не найдена")
 
-    audio_ext  = Path(file.filename).suffix.lower()
     audio_path = TEMP_DIR / f"current_audio{audio_ext}"
-
-    # Удаляем старый аудиофайл если есть
-    for old_audio in TEMP_DIR.glob("current_audio.*"):
-        try: old_audio.unlink()
-        except: pass
-
-    # Сохраняем загруженный файл во временную папку
     tmp_path = TEMP_DIR / f"_tmp_{uuid4().hex}{audio_ext}"
     tmp_path.write_bytes(await file.read())
+    try:
+        await run_in_threadpool(validate_audio, tmp_path)
+        if transcription_status["status"] == "processing":
+            raise HTTPException(409, "Дождись окончания текущей транскрибации")
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+    # Keep the previous playable audio when an invalid upload is rejected.
+    for old_audio in TEMP_DIR.glob("current_audio.*"):
+        try:
+            old_audio.unlink()
+        except OSError:
+            pass
 
     transcription_status = {"status": "processing", "message": "Транскрибирую...", "words": [], "text": ""}
 

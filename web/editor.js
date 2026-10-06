@@ -91,6 +91,15 @@ uz.addEventListener('drop', e => { e.preventDefault(); uz.classList.remove('drag
 
 function pickFile(f) {
   try {
+    const extension = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+    const supported = ['.mp3', '.m4a', '.mp4', '.wav', '.flac', '.ogg', '.webm'];
+    if (!supported.includes(extension) || !f.size) {
+      removeFile();
+      setStatus('error', !f.size
+        ? 'Файл пустой. Выбери аудиофайл с записью.'
+        : 'Выбери аудиофайл: MP3, M4A, MP4, WAV, FLAC, OGG или WEBM. SRT — файл субтитров, его нельзя транскрибировать.');
+      return;
+    }
     selectedFile = f;
     document.getElementById('fileName').textContent = f.name;
     document.getElementById('fileChip').classList.add('show');

@@ -1,3 +1,5 @@
+import io
+import wave
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,6 +22,13 @@ class GroqTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.root = Path(self.directory.name)
+        buffer = io.BytesIO()
+        with wave.open(buffer, 'wb') as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(16000)
+            audio.writeframes(bytes(16000 * 2))
+        self.audio_bytes = buffer.getvalue()
         self.old_config_path = config._env_path
         config.init(self.root / '.env')
         self.old_status = application.transcription_status
@@ -51,7 +60,7 @@ class GroqTests(unittest.TestCase):
 
     def test_missing_key_and_invalid_provider_fail_before_processing(self):
         for data in ({'provider':'groq'}, {'provider':'other'}, {'provider':'local'}):
-            r = self.client.post('/api/transcribe', files={'file':('test.wav', b'audio')}, data=data)
+            r = self.client.post('/api/transcribe', files={'file':('test.wav', self.audio_bytes)}, data=data)
             self.assertEqual(r.status_code, 400)
             self.assertEqual(application.transcription_status['status'], 'idle')
 
@@ -60,13 +69,13 @@ class GroqTests(unittest.TestCase):
         words = [{'word':'привет', 'start':0, 'end':1}]
         with patch.object(application, 'transcribe_with_groq', return_value=words) as cloud, \
              patch.object(application, 'transcribe_with_local_model') as local:
-            r = self.client.post('/api/transcribe', files={'file':('test.wav', b'audio')},
+            r = self.client.post('/api/transcribe', files={'file':('test.wav', self.audio_bytes)},
                                  data={'provider':'groq', 'groq_model':'whisper-large-v3'})
             self.assertEqual(r.status_code, 200)
             self.assertEqual(cloud.call_args.args[1:], ('test-secret', 'whisper-large-v3'))
             local.assert_not_called()
         self.assertEqual(self.client.get('/api/status').json()['words'], words)
-        self.assertEqual(self.client.get('/api/audio').content, b'audio')
+        self.assertEqual(self.client.get('/api/audio').content, self.audio_bytes)
 
     def test_local_mode_does_not_call_cloud(self):
         model = self.root / 'test-model'
@@ -75,7 +84,7 @@ class GroqTests(unittest.TestCase):
         with patch.object(application, 'MODELS_DIR', self.root), \
              patch.object(application, 'transcribe_with_local_model', return_value=[]) as local, \
              patch.object(application, 'transcribe_with_groq') as cloud:
-            self.client.post('/api/transcribe', files={'file':('test.wav', b'audio')},
+            self.client.post('/api/transcribe', files={'file':('test.wav', self.audio_bytes)},
                              data={'provider': 'local', 'model': 'test-model'})
             local.assert_called_once()
             cloud.assert_not_called()
@@ -84,6 +93,26 @@ class GroqTests(unittest.TestCase):
         for payload in ({'provider':'invalid'}, {'groq_model':'invalid'}, {'groq_api_key':'a\nb'}):
             self.assertEqual(self.client.post('/api/config', json=payload).status_code, 400)
         self.assertEqual(config.load_config(), config.DEFAULTS)
+
+    def test_invalid_uploads_never_reach_provider_or_replace_previous_audio(self):
+        self.client.post('/api/config', json={'groq_api_key': 'test-secret'})
+        previous = self.root / 'current_audio.wav'
+        previous.write_bytes(self.audio_bytes)
+        with patch.object(application, 'transcribe_with_groq') as cloud, \
+             patch.object(application, 'transcribe_with_local_model') as local:
+            for filename, content in [('captions.srt', b'1\nsubtitle'),
+                                      ('renamed.WAV', b'not real audio'),
+                                      ('empty.mp3', b''),
+                                      ('no-extension', self.audio_bytes)]:
+                with self.subTest(filename=filename):
+                    response = self.client.post('/api/transcribe',
+                        files={'file': (filename, content)}, data={'provider': 'groq'})
+                    self.assertEqual(response.status_code, 400)
+                    self.assertEqual(application.transcription_status['status'], 'idle')
+                    self.assertEqual(previous.read_bytes(), self.audio_bytes)
+                    self.assertEqual(list(self.root.glob('_tmp_*')), [])
+            cloud.assert_not_called()
+            local.assert_not_called()
 
     def test_sdk_request_uses_word_timestamps(self):
         audio = self.root / 'sample.wav'
