@@ -94,6 +94,9 @@ def preview_response(words, raw_response, max_chars, finish_reason):
     usable = [line for line in proposals if isinstance(line, str) and line.split()]
     if len(usable) != len(proposals):
         warnings.append("Пустые строки и элементы, не являющиеся текстом, пропущены.")
+    long_groups = sum(len(group.split()) > 3 for group in usable)
+    if long_groups:
+        warnings.append(f"Модель вернула группы длиннее трёх слов: {long_groups}. Они сохранены целиком; ответ можно применить или перегенерировать.")
     proposed_words = [word for line in usable for word in line.split()]
     if proposed_words != words:
         warnings.append("Ответ отличается от исходного текста: в предпросмотре восстановлены исходные слова, регистр и пунктуация. Границы сопоставлены приблизительно.")

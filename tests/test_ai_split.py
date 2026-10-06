@@ -152,6 +152,16 @@ class SplitTests(unittest.TestCase):
         result = preview_response('Нет! Мы пришли.'.split(), raw, 99, 'stop')
         self.assertEqual(result['lines'], ['Нет!', 'Мы пришли.'])
 
+    def test_long_model_chunk_is_visible_and_can_be_applied_without_losing_words(self):
+        text = 'сюда ещё можно переехать жить'
+        raw = json.dumps({'groups': [text]}, ensure_ascii=False)
+        result = preview_response(text.split(), raw, 24, 'stop')
+        self.assertEqual(result['raw_response'], raw)
+        self.assertEqual(result['groups'], [text])
+        self.assertEqual(result['lines'], [text])
+        self.assertEqual(result['ends'], [5])
+        self.assertTrue(any('длиннее трёх слов: 1' in warning for warning in result['warnings']))
+
     def test_six_hundred_words_still_survive_an_incomplete_proposal(self):
         words = [f'слово{i}' for i in range(600)]
         raw = json.dumps({'groups': [' '.join(words[:3]), ' '.join(words[10:20])]})
