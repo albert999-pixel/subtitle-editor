@@ -1,5 +1,5 @@
 // ── State ──────────────────────────────────────────────────
-let rows = [];       // [{text: string, preservedCase: Set<number>}]
+let rows = [];       // [{text, preservedCase: Set<number>, reviewReasons?: string[]}]
 let trMode = 'auto'; // 'auto' | 'punct'
 let wordTimings = [];
 let mode = 'edit';   // 'edit' | 'highlight'
@@ -10,6 +10,7 @@ let history = [];    // стек для отмены
 let historyIndex = -1;
 let editHistoryTimer = null;
 let aiProposal = null;
+let aiView = 'packed';
 
 function saveHistory() {
   clearTimeout(editHistoryTimer);
@@ -17,7 +18,7 @@ function saveHistory() {
   // Обрезаем всё что после текущего индекса (если делали undo и потом новое действие)
   history = history.slice(0, historyIndex + 1);
   // Сохраняем глубокую копию
-  history.push(rows.map(r => ({ text: r.text, preservedCase: new Set(r.preservedCase) })));
+  history.push(rows.map(SubtitleAI.cloneRow));
   historyIndex++;
   // Не храним больше 50 шагов
   if (history.length > 50) { history.shift(); historyIndex--; }
@@ -26,14 +27,14 @@ function saveHistory() {
 function undo() {
   if (historyIndex <= 0) return;
   historyIndex--;
-  rows = history[historyIndex].map(r => ({ text: r.text, preservedCase: new Set(r.preservedCase) }));
+  rows = history[historyIndex].map(SubtitleAI.cloneRow);
   renderRows();
 }
 
 function redo() {
   if (historyIndex >= history.length - 1) return;
   historyIndex++;
-  rows = history[historyIndex].map(r => ({ text: r.text, preservedCase: new Set(r.preservedCase) }));
+  rows = history[historyIndex].map(SubtitleAI.cloneRow);
   renderRows();
 }
 
@@ -278,7 +279,8 @@ function renderRows() {
 
     // Number
     const num = document.createElement('div');
-    num.className = 'row-num';
+    num.className = 'row-num' + (row.reviewReasons?.length ? ' needs-review' : '');
+    if (row.reviewReasons?.length) num.title = 'Обрати внимание: ' + row.reviewReasons.join('; ');
     num.textContent = ri + 1;
 
     // Content
@@ -312,7 +314,7 @@ function renderRows() {
           const selected = rows[ri].preservedCase;
           rows[ri].text = before;
           rows[ri].preservedCase = new Set([...selected].filter(i => i < boundary));
-          rows.splice(ri + 1, 0, { text: after, preservedCase: new Set([...selected].filter(i => i >= boundary).map(i => i - boundary)) });
+          rows.splice(ri + 1, 0, { text: after, preservedCase: new Set([...selected].filter(i => i >= boundary).map(i => i - boundary)), reviewReasons: SubtitleAI.reviewReasons(rows[ri]) });
           saveHistory();
           renderRows();
           // Focus next row
@@ -344,6 +346,7 @@ function renderRows() {
           const offset = (rows[ri - 1].text.match(/\S+/g) || []).length;
           rows[ri - 1].text = (rows[ri - 1].text + ' ' + rows[ri].text).trim();
           rows[ri].preservedCase.forEach(wi => rows[ri - 1].preservedCase.add(wi + offset));
+          rows[ri - 1].reviewReasons = SubtitleAI.reviewReasons(rows[ri - 1], rows[ri]);
           rows.splice(ri, 1);
           saveHistory();
           renderRows();
@@ -361,6 +364,7 @@ function renderRows() {
           const offset = (rows[ri].text.match(/\S+/g) || []).length;
           rows[ri + 1].preservedCase.forEach(wi => rows[ri].preservedCase.add(wi + offset));
           rows[ri].text = (rows[ri].text + ' ' + rows[ri + 1].text).trim();
+          rows[ri].reviewReasons = SubtitleAI.reviewReasons(rows[ri], rows[ri + 1]);
           rows.splice(ri + 1, 1);
           saveHistory();
           renderRows();
@@ -490,7 +494,7 @@ async function requestAISplit() {
   const status = document.getElementById('aiStatus');
   const signature = splitInputSignature();
   const snapshot = JSON.parse(signature);
-  const previousEnds = aiProposal?.signature === signature ? aiProposal.ends : null;
+  const previousEnds = aiProposal?.signature === signature ? SubtitleAI.variant(aiProposal.data, aiView).ends : null;
   button.disabled = true;
   document.getElementById('aiRegenerate').disabled = true;
   status.textContent = 'Groq делит текст на смысловые фразы…';
@@ -500,7 +504,7 @@ async function requestAISplit() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Не удалось получить разбивку');
     if (splitInputSignature() !== signature) throw new Error('Текст или лимит изменился во время запроса. Получи новое предложение.');
-    aiProposal = {signature, lines:data.lines, ends:data.ends};
+    aiProposal = {signature, data};
     document.getElementById('aiRawResponse').textContent = data.raw_response || '(пустой ответ)';
     document.getElementById('aiRawPanel').style.display = 'block';
     const warnings = document.getElementById('aiWarnings');
@@ -512,20 +516,9 @@ async function requestAISplit() {
     });
     warnings.style.display = data.warnings?.length ? 'block' : 'none';
     document.getElementById('aiRawPanel').open = Boolean(data.warnings?.length);
-    const preview = document.getElementById('aiPreview');
-    preview.replaceChildren();
-    data.lines.forEach((text, index) => {
-      const item = document.createElement('div');
-      item.className = 'sub-row';
-      const length = Array.from(text).length;
-      const over = length > snapshot.max;
-      const note = (data.quality_warnings || []).find(warning => warning.index === index + 1);
-      item.textContent = `${index + 1}. ${text} (${length}/${snapshot.max}${over ? ' · превышение' : ''}${note ? ' · ' + note.reason : ''})`;
-      if (over || note) { item.style.border = '1px solid #e8a849'; item.style.color = '#e8a849'; }
-      preview.appendChild(item);
-    });
     document.getElementById('aiActions').style.display = 'flex';
-    status.textContent = `Предпросмотр титров: ${data.lines.length}. Смысловых групп: ${(data.groups || data.lines).length}.${data.warnings?.length ? " Есть корректировки; смотри предупреждения и исходный ответ." : ""} Все слова сохранены. Превышений лимита ${snapshot.max}: ${(data.overlong || []).length}. Строк со связующим словом в конце: ${(data.quality_warnings || []).length}. Можно применить любой вариант или перегенерировать.`;
+    document.getElementById('aiViewSwitch').style.display = 'flex';
+    renderAIPreview();
   } catch (error) {
     status.textContent = error.message;
   } finally {
@@ -533,8 +526,34 @@ async function requestAISplit() {
     document.getElementById('aiRegenerate').disabled = false;
   }
 }
+function setAIView(view) {
+  aiView = view;
+  renderAIPreview();
+}
+function renderAIPreview() {
+  if (!aiProposal) return;
+  const data = aiProposal.data;
+  const selected = SubtitleAI.variant(data, aiView);
+  const preview = document.getElementById('aiPreview');
+  preview.replaceChildren();
+  document.getElementById('aiViewPacked').classList.toggle('active', aiView === 'packed');
+  document.getElementById('aiViewGroups').classList.toggle('active', aiView === 'groups');
+  document.getElementById('aiViewPacked').setAttribute('aria-pressed', String(aiView === 'packed'));
+  document.getElementById('aiViewGroups').setAttribute('aria-pressed', String(aiView === 'groups'));
+  selected.lines.forEach((text, index) => {
+    const item = document.createElement('div');
+    item.className = 'sub-row';
+    const notes = selected.notes[index];
+    item.textContent = `${index + 1}. ${text} (${Array.from(text).length}/${data.max_chars}${notes.length ? ' · ' + notes.join('; ') : ''})`;
+    if (notes.length) { item.style.border = '1px solid #e8a849'; item.style.color = '#e8a849'; }
+    preview.appendChild(item);
+  });
+  const count = selected.notes.filter(notes => notes.length).length;
+  document.getElementById('aiStatus').textContent = `${aiView === 'groups' ? 'Чанки GPT OSS без объединения' : 'Титры, собранные программой'}: ${selected.lines.length}. Строк с предупреждениями: ${count}. При применении их номера будут отмечены красным кружком. Все исходные слова сохранены; дословный ответ модели доступен ниже.`;
+}
 function discardAISplit() {
   aiProposal = null;
+  document.getElementById('aiViewSwitch').style.display = 'none';
   document.getElementById('aiPreview').replaceChildren();
   document.getElementById('aiRawResponse').textContent = '';
   document.getElementById('aiRawPanel').style.display = 'none';
@@ -551,19 +570,7 @@ function applyAISplit() {
     return;
   }
   if (editHistoryTimer) saveHistory();
-  const selected = new Set();
-  let offset = 0;
-  rows.forEach(row => {
-    row.preservedCase.forEach(index => selected.add(offset + index));
-    offset += (row.text.match(/\S+/g) || []).length;
-  });
-  let first = 0;
-  rows = aiProposal.lines.map((text, index) => {
-    const end = aiProposal.ends[index];
-    const preservedCase = new Set([...selected].filter(n => n >= first && n < end).map(n => n - first));
-    first = end;
-    return {text, preservedCase};
-  });
+  rows = SubtitleAI.applyVariant(rows, SubtitleAI.variant(aiProposal.data, aiView));
   saveHistory();
   discardAISplit();
   setMode('edit');

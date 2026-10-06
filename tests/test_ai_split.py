@@ -152,6 +152,18 @@ class SplitTests(unittest.TestCase):
         result = preview_response('Нет! Мы пришли.'.split(), raw, 99, 'stop')
         self.assertEqual(result['lines'], ['Нет!', 'Мы пришли.'])
 
+    def test_group_variant_keeps_breaks_and_maps_warnings_to_packed_captions(self):
+        text = 'Мы были в магазине'
+        raw = json.dumps({'groups': ['Мы были в', 'магазине']})
+        result = preview_response(text.split(), raw, 24, 'stop')
+        self.assertEqual(result['groups'], ['Мы были в', 'магазине'])
+        self.assertEqual(result['group_ends'], [3, 4])
+        self.assertEqual(result['lines'], [text])
+        self.assertEqual(result['ends'], [4])
+        self.assertEqual(result['group_quality_warnings'][0]['index'], 1)
+        self.assertEqual(result['quality_warnings'][0]['index'], 1)
+        self.assertEqual(result['raw_response'], raw)
+
     def test_long_model_chunk_is_visible_and_can_be_applied_without_losing_words(self):
         text = 'сюда ещё можно переехать жить'
         raw = json.dumps({'groups': [text]}, ensure_ascii=False)

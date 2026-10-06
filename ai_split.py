@@ -109,13 +109,28 @@ def preview_response(words, raw_response, max_chars, finish_reason):
     if not ends or ends[-1] != len(words):
         ends.append(len(words))
     groups = validate_boundaries(words, ends)
+    group_ends = ends[:]
+    group_quality_warnings = []
+    for index, group in enumerate(groups, 1):
+        if len(group.split()) > 3:
+            group_quality_warnings.append({"index": index, "reason": "чанк длиннее трёх слов"})
+        if group.split()[-1].casefold().strip('.,!?;:') in DANGLING_WORDS:
+            group_quality_warnings.append({"index": index, "reason": "связующее слово в конце чанка"})
     lines, ends = _pack_group_ends(words, ends, max_chars)
     overlong = [{"index": i + 1, "length": len(text)} for i, text in enumerate(lines) if len(text) > max_chars]
     quality_warnings = [{"index": i + 1, "reason": "связующее слово в конце"}
                         for i, text in enumerate(lines[:-1])
                         if text.split()[-1].casefold().strip('.,!?;:') in DANGLING_WORDS]
+    for warning in group_quality_warnings:
+        caption_index = next(i for i, end in enumerate(ends, 1)
+                             if end >= group_ends[warning["index"] - 1])
+        mapped = {"index": caption_index, "reason": warning["reason"]}
+        if mapped not in quality_warnings:
+            quality_warnings.append(mapped)
     return {"lines": lines, "ends": ends, "model": MODEL, "overlong": overlong,
-            "max_chars": max_chars, "groups": groups, "warnings": warnings, "quality_warnings": quality_warnings,
+            "max_chars": max_chars, "groups": groups, "group_ends": group_ends,
+            "group_quality_warnings": group_quality_warnings,
+            "warnings": warnings, "quality_warnings": quality_warnings,
             "raw_response": raw_response, "finish_reason": finish_reason}
 
 

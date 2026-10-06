@@ -285,6 +285,22 @@
     flex-shrink: 0;
     padding-bottom: 2px;
   }
+  .row-num.needs-review {
+    color: var(--error);
+    border: 1px solid var(--error);
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  #aiViewSwitch button[aria-pressed="true"] {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--surface2);
+  }
 
   /* ── EDIT MODE row ── */
   .row-edit-input {
@@ -532,6 +548,10 @@
       <button class="btn btn-yellow" id="aiSuggest" onclick="requestAISplit()">Предложить разбивку</button>
       <p id="aiStatus" class="settings-note" role="status"></p>
       <ul id="aiWarnings" class="settings-note" style="color:#e8a849;display:none"></ul>
+      <div id="aiViewSwitch" role="group" aria-label="Вариант разбивки" style="display:none;gap:8px;flex-wrap:wrap;margin:12px 0">
+        <button class="tb-btn active" id="aiViewPacked" aria-pressed="true" onclick="setAIView('packed')">Титры программы</button>
+        <button class="tb-btn" id="aiViewGroups" aria-pressed="false" onclick="setAIView('groups')">Чанки GPT OSS · без объединения</button>
+      </div>
       <div id="aiPreview"></div>
       <details id="aiRawPanel" style="display:none;margin-top:14px" class="settings-note">
         <summary>Исходный ответ модели</summary>
@@ -591,6 +611,7 @@
 </div>
 
 <script src="/case-tools.js"></script>
+<script src="/ai-tools.js"></script>
 <script src="/editor.js"></script>
 </body>
 </html>

@@ -18,3 +18,33 @@ assert.ok(!html.includes('hlColorPicker'));
 assert.ok(editor.includes('const lines = rows.map(r => ({ text: r.text }));'));
 console.log('Case operations, selection remapping and inline script syntax: OK');
 assert.equal((editor.match(/\/\/ Глобальный обработчик Cmd\+Z/g) || []).length, 1);
+
+const ai = require('../web/ai-tools.js');
+const proposal = {
+  max_chars: 24,
+  groups: ['Мы проверили', 'Иван', 'из Москвы.'], group_ends: [2, 3, 5],
+  lines: ['Мы проверили Иван', 'из Москвы.'], ends: [3, 5],
+  quality_warnings: [{index: 1, reason: 'проверить смысл'}],
+  group_quality_warnings: [{index: 2, reason: 'проверить смысл'}],
+};
+const source = [{text: 'Мы проверили Иван из Москвы.', preservedCase: new Set([2, 4])}];
+for (const kind of ['packed', 'groups']) {
+  const result = ai.applyVariant(source, ai.variant(proposal, kind));
+  assert.equal(result.map(row => row.text).join(' '), source[0].text);
+  const selectedWords = result.flatMap(row => [...row.preservedCase].map(index => row.text.split(' ')[index]));
+  assert.deepEqual(selectedWords, ['Иван', 'Москвы.']);
+  assert.equal(result.filter(row => row.reviewReasons.length).length, 1);
+  assert.equal(result.find(row => row.reviewReasons.length).text, kind === 'groups' ? 'Иван' : 'Мы проверили Иван');
+}
+const marked = ai.applyVariant(source, ai.variant(proposal, 'groups'));
+const snapshot = marked.map(ai.cloneRow);
+marked[1].text = 'Игорь';
+marked[1].reviewReasons.push('ещё одна причина');
+assert.equal(snapshot[1].text, 'Иван');
+assert.deepEqual(snapshot[1].reviewReasons, ['проверить смысл']);
+assert.deepEqual(ai.reviewReasons(snapshot[0], snapshot[1], snapshot[1]), ['проверить смысл']);
+const regrouped = ai.applyVariant(snapshot, {lines: [source[0].text], ends: [5], notes: [[]]});
+assert.deepEqual(regrouped[0].reviewReasons, ['проверить смысл']);
+const overlong = ai.variant({...proposal, max_chars: 3}, 'groups');
+assert.equal(overlong.notes.filter(notes => notes.length).length, 3);
+console.log('AI variants, original words, preserved case and persistent review marks: OK');
