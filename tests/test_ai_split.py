@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import MagicMock, patch
 from ai_split import suggest_split, validate_boundaries, preview_response
@@ -6,81 +7,137 @@ from ai_split import suggest_split, validate_boundaries, preview_response
 class SplitTests(unittest.TestCase):
     def test_complete_partition_preserves_words(self):
         words = 'Нефть лошади сахар и автоспорт'.split()
-        lines = validate_boundaries(words, [3, 5])
-        self.assertEqual(' '.join(lines), ' '.join(words))
-        self.assertTrue(all(len(line) <= 24 for line in lines))
+        self.assertEqual(' '.join(validate_boundaries(words, [3, 5])), ' '.join(words))
 
-    def test_rejects_missing_repeated_reordered_invalid_boundaries(self):
+    def test_internal_boundaries_must_be_a_complete_partition(self):
         for ends in ([], [1], [2, 2], [3, 2], [0, 3], [4], ['3'], [True, 3]):
             with self.subTest(ends=ends), self.assertRaises(ValueError):
                 validate_boundaries(['а', 'б', 'в'], ends)
 
-    def test_overlong_line_is_kept(self):
-        self.assertEqual(validate_boundaries(['раз', 'два'], [2]), ['раз два'])
-
-    def test_limits_and_overlong_word_do_not_call_groq(self):
+    def test_limits_do_not_call_groq(self):
         with patch('groq.Groq') as api:
             for texts in (['а ' * 601], []):
                 with self.assertRaises(ValueError):
                     suggest_split(texts, 3, 'test-key')
             api.assert_not_called()
 
-    def test_one_request_only_and_local_reconstruction(self):
+    def test_one_request_with_readable_text_and_previous_phrases(self):
         client = MagicMock()
         response = client.chat.completions.create.return_value
         response.choices[0].finish_reason = 'stop'
-        response.choices[0].message.content = '{"ends":[2,3]}'
+        response.choices[0].message.content = '{"lines":["Иван","из Москвы"]}'
         with patch('groq.Groq') as api:
             api.return_value.__enter__.return_value = client
             result = suggest_split(['Иван из Москвы'], 3, 'test-key', [3])
-            self.assertEqual(result['lines'], ['Иван из', 'Москвы'])
-            self.assertEqual(result['overlong'], [{'index':1, 'length':7}, {'index':2, 'length':6}])
-            import json
+            self.assertEqual(result['lines'], ['Иван', 'из Москвы'])
+            self.assertEqual(result['ends'], [1, 3])
+            self.assertEqual(result['overlong'], [{'index': 1, 'length': 4}, {'index': 2, 'length': 9}])
             payload = json.loads(client.chat.completions.create.call_args.kwargs['messages'][1]['content'])
             self.assertEqual(payload['max_chars'], 3)
-            self.assertEqual(payload['previous_ends'], [3])
-            self.assertEqual(payload['word_count'], 3)
-            self.assertEqual(payload['words'][-1], {'index': 3, 'text': 'Москвы'})
+            self.assertEqual(payload['text'], 'Иван из Москвы')
+            self.assertEqual(payload['previous_lines'], ['Иван из Москвы'])
+            self.assertNotIn('words', payload)
             client.chat.completions.create.assert_called_once()
             self.assertEqual(api.call_args.kwargs['max_retries'], 0)
 
-    def test_truncated_response_is_visible_and_preserves_text(self):
+    def test_provider_json_error_shows_available_generated_answer_without_retry(self):
+        import httpx
+        from groq import BadRequestError
         client = MagicMock()
-        response = client.chat.completions.create.return_value
-        response.choices[0].finish_reason = 'length'
-        response.choices[0].message.content = '{"ends":['
+        raw = '{"lines":["полный текст"]}'
+        response = httpx.Response(400, request=httpx.Request('POST', 'https://api.groq.com'))
+        client.chat.completions.create.side_effect = BadRequestError('validation failed',
+            response=response, body={'error': {'code': 'json_validate_failed', 'failed_generation': raw}})
         with patch('groq.Groq') as api:
             api.return_value.__enter__.return_value = client
             result = suggest_split(['полный текст'], 24, 'test-key')
-            self.assertEqual(result['raw_response'], '{"ends":[')
+            self.assertEqual(result['raw_response'], raw)
             self.assertEqual(result['lines'], ['полный текст'])
             self.assertTrue(result['warnings'])
             client.chat.completions.create.assert_called_once()
 
-    def test_bad_boundaries_are_visible_and_repaired_without_loss(self):
-        import json
-        words = ['один', 'два', 'три', 'четыре']
-        for ends in ([], [1], [2, 2], [3, 2], [0, 3], [9], ['3'], [True, 3]):
-            with self.subTest(ends=ends):
-                raw = json.dumps({'ends': ends})
+    def test_invalid_old_proposal_does_not_block_regeneration(self):
+        client = MagicMock()
+        response = client.chat.completions.create.return_value
+        response.choices[0].finish_reason = 'stop'
+        response.choices[0].message.content = '{"lines":["текст"]}'
+        with patch('groq.Groq') as api:
+            api.return_value.__enter__.return_value = client
+            result = suggest_split(['текст'], 24, 'test-key', [10, 20])
+            self.assertEqual(result['lines'], ['текст'])
+            payload = json.loads(client.chat.completions.create.call_args.kwargs['messages'][1]['content'])
+            self.assertIsNone(payload['previous_lines'])
+
+    def test_truncated_json_is_visible_and_preserves_text(self):
+        result = preview_response(['полный', 'текст'], '{"lines":[', 24, 'length')
+        self.assertEqual(result['raw_response'], '{"lines":[')
+        self.assertEqual(result['lines'], ['полный текст'])
+        self.assertTrue(result['warnings'])
+
+    def test_omissions_insertions_changes_and_repetitions_never_lose_text(self):
+        cases = [
+            (['первый', 'середина', 'последний'], ['первый', 'последний']),
+            (['привет', 'мир'], ['привет лишнее', 'мир']),
+            (['Иван', 'из', 'Москвы.'], ['Игорь из', 'Москвы!']),
+            (['раз', 'раз', 'два', 'раз'], ['раз раз', 'два раз']),
+            (['раз', 'раз', 'два', 'раз'], ['два раз', 'раз раз']),
+            (['начало', 'середина', 'конец'], ['середина']),
+            (['весь', 'исходный', 'текст'], ['совсем чужой ответ']),
+        ]
+        for words, proposed in cases:
+            with self.subTest(words=words, proposed=proposed):
+                raw = json.dumps({'lines': proposed}, ensure_ascii=False)
                 result = preview_response(words, raw, 24, 'stop')
                 self.assertEqual(result['raw_response'], raw)
-                self.assertTrue(result['warnings'])
-                self.assertEqual(' '.join(result['lines']), ' '.join(words))
+                self.assertEqual(' '.join(result['lines']).split(), words)
                 self.assertEqual(result['ends'], sorted(set(result['ends'])))
                 self.assertEqual(result['ends'][-1], len(words))
+                if ' '.join(proposed).split() != words:
+                    self.assertTrue(result['warnings'])
 
-    def test_plain_text_and_missing_field_are_shown_verbatim(self):
-        for raw in ('<b>ответ модели</b>', '{"other":[]}', '{"ends":null}'):
+    def test_case_and_punctuation_changes_preserve_breaks_and_original_spelling(self):
+        result = preview_response(['Иван', 'Москва!'], '{"lines":["иван","москва"]}', 24, 'stop')
+        self.assertEqual(result['lines'], ['Иван', 'Москва!'])
+        self.assertEqual(result['ends'], [1, 2])
+        self.assertTrue(result['warnings'])
+
+    def test_unknown_empty_or_malformed_response_is_shown_verbatim(self):
+        for raw in ('<b>ответ модели</b>', '{"ends":[10,20]}', '{"lines":null}',
+                    '{"lines":[]}', '{"lines":[null,12,""]}'):
             result = preview_response(['весь', 'текст'], raw, 24, 'stop')
             self.assertEqual(result['raw_response'], raw)
             self.assertEqual(result['lines'], ['весь текст'])
             self.assertTrue(result['warnings'])
 
-    def test_valid_response_is_not_modified(self):
-        result = preview_response(['один', 'два', 'три'], '{"ends":[1,3]}', 24, 'stop')
+    def test_dangling_words_move_forward_without_losing_text(self):
+        result = preview_response(['мы', 'были', 'в', 'магазине'],
+                                  '{"lines":["мы были в","магазине"]}', 4, 'stop')
+        self.assertEqual(result['lines'], ['мы были', 'в магазине'])
+        self.assertTrue(result['warnings'])
+        self.assertEqual(result['raw_response'], '{"lines":["мы были в","магазине"]}')
+        self.assertEqual(len(result['overlong']), 2)
+
+    def test_multiple_connecting_words_and_empty_ranges_are_handled(self):
+        for words, proposed, expected in [
+            (['и', 'в', 'магазине'], ['и', 'в', 'магазине'], ['и в магазине']),
+            (['он', 'хотел', 'но', 'не', 'смог'], ['он хотел но не', 'смог'], ['он хотел', 'но не смог']),
+            (['буква', 'И.', 'дальше'], ['буква И.', 'дальше'], ['буква И.', 'дальше']),
+        ]:
+            result = preview_response(words, json.dumps({'lines': proposed}), 24, 'stop')
+            self.assertEqual(result['lines'], expected)
+            self.assertEqual(' '.join(result['lines']).split(), words)
+
+    def test_good_response_is_not_modified(self):
+        result = preview_response(['один', 'два', 'три'], '{"lines":["один","два три"]}', 24, 'stop')
         self.assertEqual(result['lines'], ['один', 'два три'])
         self.assertEqual(result['warnings'], [])
+
+    def test_six_hundred_words_still_survive_an_incomplete_proposal(self):
+        words = [f'слово{i}' for i in range(600)]
+        raw = json.dumps({'lines': [' '.join(words[:3]), ' '.join(words[10:20])]})
+        result = preview_response(words, raw, 24, 'stop')
+        self.assertEqual(' '.join(result['lines']).split(), words)
+        self.assertTrue(result['warnings'])
 
 
 if __name__ == '__main__':

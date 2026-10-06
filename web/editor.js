@@ -493,7 +493,7 @@ async function requestAISplit() {
   const previousEnds = aiProposal?.signature === signature ? aiProposal.ends : null;
   button.disabled = true;
   document.getElementById('aiRegenerate').disabled = true;
-  status.textContent = 'Groq подбирает границы титров…';
+  status.textContent = 'Groq делит текст на смысловые фразы…';
   try {
     const res = await fetch('/api/ai-split', {method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({texts:snapshot.texts, max_chars:snapshot.max, previous_ends:previousEnds})});
@@ -519,12 +519,13 @@ async function requestAISplit() {
       item.className = 'sub-row';
       const length = Array.from(text).length;
       const over = length > snapshot.max;
-      item.textContent = `${index + 1}. ${text} (${length}/${snapshot.max}${over ? ' · превышение' : ''})`;
-      if (over) { item.style.border = '1px solid #e8a849'; item.style.color = '#e8a849'; }
+      const note = (data.quality_warnings || []).find(warning => warning.index === index + 1);
+      item.textContent = `${index + 1}. ${text} (${length}/${snapshot.max}${over ? ' · превышение' : ''}${note ? ' · ' + note.reason : ''})`;
+      if (over || note) { item.style.border = '1px solid #e8a849'; item.style.color = '#e8a849'; }
       preview.appendChild(item);
     });
     document.getElementById('aiActions').style.display = 'flex';
-    status.textContent = `Предпросмотр титров: ${data.lines.length}.${data.warnings?.length ? " Границы исправлены для сохранения текста; смотри предупреждения и исходный ответ." : ""} Все слова сохранены. Превышений лимита ${snapshot.max}: ${(data.overlong || []).length}. Можно применить любой вариант или перегенерировать.`;
+    status.textContent = `Предпросмотр титров: ${data.lines.length}.${data.warnings?.length ? " Есть корректировки; смотри предупреждения и исходный ответ." : ""} Все слова сохранены. Превышений лимита ${snapshot.max}: ${(data.overlong || []).length}. Строк со связующим словом в конце: ${(data.quality_warnings || []).length}. Можно применить любой вариант или перегенерировать.`;
   } catch (error) {
     status.textContent = error.message;
   } finally {
