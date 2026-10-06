@@ -252,7 +252,6 @@ function setMode(m) {
   document.getElementById('aiPanel').style.display = m === 'ai' ? '' : 'none';
   document.getElementById('subList').style.display = m === 'ai' ? 'none' : '';
   document.getElementById('clearCaseSelection').style.display = m === 'highlight' ? '' : 'none';
-  document.getElementById('selectAllCaseWords').style.display = m === 'highlight' ? '' : 'none';
   document.getElementById('applyLowercase').style.display = m === 'highlight' ? '' : 'none';
   document.getElementById('caseHint').style.display = m === 'highlight' ? '' : 'none';
   renderRows();
@@ -473,7 +472,6 @@ function renderRows() {
 }
 
 function clearCaseSelection() { rows.forEach(r => r.preservedCase.clear()); saveHistory(); renderRows(); }
-function selectAllCaseWords() { rows.forEach(r => (r.text.match(/\S+/g) || []).forEach((_, i) => r.preservedCase.add(i))); saveHistory(); renderRows(); }
 
 function lowercaseUnselected() {
   if (!rows.length) return;
@@ -609,10 +607,12 @@ function toast(msg) {
   setTimeout(() => t.remove(), 2200);
 }
 
-// Удаление точек и запятых в конце субтитров
+// Удаление точек, запятых и тире в конце субтитров
 function stripTrailingPunct() {
   rows.forEach(r => {
-    r.text = r.text.replace(/[.,]+$/, '').trim();
+    const text = r.text.replace(/[.,\-–—\s]+$/u, '').trim();
+    r.preservedCase = SubtitleCase.remapSelection(r.text, text, r.preservedCase);
+    r.text = text;
   });
   saveHistory();
   renderRows();

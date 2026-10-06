@@ -530,14 +530,13 @@
         <button class="mode-btn" id="modeAI" onclick="setMode('ai')">✦ Разбивка ИИ · эксперимент</button>
       </div>
       <div class="tb-sep"></div>
-      <button class="tb-btn" id="stripPunct" onclick="stripTrailingPunct()" title="Удалить точки и запятые в конце каждого субтитра">Убрать . ,</button>
+      <button class="tb-btn" id="stripPunct" onclick="stripTrailingPunct()" title="Удалить точки, запятые и тире в конце каждого субтитра">Убрать . , —</button>
       <div class="tb-sep"></div>
       <span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Макс. символов:</span>
       <input type="number" id="maxChars" value="24" min="1" max="99"
         oninput="renderRows()"
         style="width:52px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;outline:none;text-align:center">
       <button class="tb-btn" id="clearCaseSelection" style="display:none" onclick="clearCaseSelection()">Снять выделения</button>
-      <button class="tb-btn" id="selectAllCaseWords" style="display:none" onclick="selectAllCaseWords()">Выделить всё</button>
       <button class="tb-btn" id="applyLowercase" style="display:none" onclick="lowercaseUnselected()">Строчные, кроме выделенных</button>
       <span id="caseHint" style="display:none;font-size:11px;color:var(--text-dim)">Выделенные слова сохраняют регистр</span>
     </div>
