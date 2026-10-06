@@ -525,7 +525,7 @@
       <button class="tb-btn" id="applyLowercase" style="display:none" onclick="lowercaseUnselected()">Строчные, кроме выделенных</button>
       <span id="caseHint" style="display:none;font-size:11px;color:var(--text-dim)">Выделенные слова сохраняют регистр</span>
     </div>
-    <div id="aiPanel" style="display:none;padding:20px;overflow:auto">
+    <div id="aiPanel" style="display:none;flex:1;min-height:0;padding:20px 20px 90px;overflow:auto">
       <h3 style="font-size:15px">Смысловая разбивка · GPT OSS 120B</h3>
       <p class="settings-note">Один запрос на весь текст редактора. Текст отправляется в Groq; слова и их порядок сохраняются. До 600 слов. Лимит берётся из поля «Макс. символов».</p>
       <p class="settings-note">Промпт можно изменить в файле prompts/subtitle_split.md. Результат сначала появится здесь, ручные титры заменятся только после применения.</p>
@@ -537,7 +537,7 @@
         <summary>Исходный ответ модели</summary>
         <pre id="aiRawResponse" style="white-space:pre-wrap;overflow-wrap:anywhere;user-select:text"></pre>
       </details>
-      <div id="aiActions" style="display:none;margin-top:14px;gap:10px">
+      <div id="aiActions" style="display:none;margin-top:14px;gap:10px;flex-wrap:wrap">
         <button class="btn btn-green" onclick="applyAISplit()">Применить разбивку</button>
         <button class="tb-btn" id="aiRegenerate" onclick="requestAISplit()">Перегенерировать</button>
         <button class="tb-btn" onclick="discardAISplit()">Отменить предложение</button>
