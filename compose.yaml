@@ -1,0 +1,12 @@
+services:
+  subtitle-editor:
+    build: .
+    image: subtitle-editor:local
+    ports:
+      - "127.0.0.1:5002:5001"
+    volumes:
+      - ./models:/models:ro
+      - subtitle-settings:/data
+    init: true
+volumes:
+  subtitle-settings:

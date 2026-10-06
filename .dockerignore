@@ -1,0 +1,12 @@
+*
+!Dockerfile
+!requirements.txt
+!app.py
+!config.py
+!transcription.py
+!srt.py
+!ai_split.py
+!web/
+!web/**
+!prompts/
+!prompts/**

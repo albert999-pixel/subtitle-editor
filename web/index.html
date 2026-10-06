@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Генератор субтитров</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Unbounded:wght@400;700&display=swap');
+
+  :root {
+    --bg: #0e0e11;
+    --surface: #16161a;
+    --surface2: #1e1e24;
+    --border: #2a2a35;
+    --accent: #fffb00;
+    --text: #e8e8f0;
+    --text-dim: #6b6b80;
+    --success: #00e5a0;
+    --error: #ff4466;
+    --radius: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: 16px 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  .logo {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logo span { color: var(--accent); }
+
+  .header-right { display: flex; gap: 10px; align-items: center; }
+
+  .btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .btn-yellow { background: var(--accent); color: #000; }
+  .btn-yellow:hover { background: #fff; }
+  .btn-green { background: var(--success); color: #000; }
+  .btn-green:hover { background: #00ffb3; }
+  .btn-dim { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-dim:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    overflow: hidden;
+    height: calc(100vh - 57px);
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .sb-section {
+    padding: 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sb-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+
+  .upload-zone {
+    border: 1.5px dashed var(--border);
+    border-radius: 10px;
+    padding: 22px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--bg);
+  }
+  .upload-zone:hover, .upload-zone.drag-over { border-color: var(--accent); background: rgba(255,251,0,0.03); }
+  .upload-zone .icon { font-size: 24px; margin-bottom: 6px; }
+  .upload-zone .hint { font-size: 11px; color: var(--text-dim); line-height: 1.6; }
+  .upload-zone .hint b { color: var(--text); display: block; margin-bottom: 2px; }
+
+  .file-chip {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--surface2);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    margin-top: 8px;
+    font-size: 11px;
+  }
+  .file-chip.show { display: flex; }
+  .file-chip-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-chip-rm { cursor: pointer; color: var(--text-dim); font-size: 16px; line-height: 1; }
+  .file-chip-rm:hover { color: var(--error); }
+
+  .status {
+    display: none;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 11px;
+    margin-top: 10px;
+  }
+  .status.show { display: block; }
+  .status.processing { background: rgba(255,251,0,0.08); color: var(--accent); border: 1px solid rgba(255,251,0,0.2); }
+  .status.done { background: rgba(0,229,160,0.08); color: var(--success); border: 1px solid rgba(0,229,160,0.2); }
+  .status.error { background: rgba(255,68,102,0.08); color: var(--error); border: 1px solid rgba(255,68,102,0.2); }
+
+  .spin { display: inline-block; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .field { margin-bottom: 10px; }
+  .field-label { font-size: 10px; color: var(--text-dim); margin-bottom: 5px; }
+  .field-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .field-input:focus { border-color: var(--accent); }
+
+  .hints-block { padding: 14px 18px; font-size: 11px; color: var(--text-dim); line-height: 2; }
+  .k {
+    display: inline-block;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0px 6px;
+    font-size: 10px;
+    color: var(--text);
+    margin-right: 2px;
+  }
+
+  /* ── EDITOR ── */
+  .editor { display: flex; flex-direction: column; overflow: hidden; }
+
+  .toolbar {
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  /* Mode toggle */
+  .mode-toggle {
+    display: flex;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .mode-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: transparent;
+    color: var(--text-dim);
+  }
+  .mode-btn.active { background: var(--surface2); color: var(--text); }
+
+  .tb-sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+
+  .tb-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tb-btn:hover { color: var(--text); border-color: var(--text-dim); }
+
+  /* Subtitle list */
+  .sub-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px 20px 70px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-dim);
+    text-align: center;
+    gap: 10px;
+  }
+  .empty-state .ei { font-size: 40px; opacity: 0.3; }
+  .empty-state .et { font-size: 13px; color: var(--text); }
+  .empty-state .es { font-size: 11px; line-height: 1.7; }
+
+  /* Row */
+  .sub-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    animation: fi 0.12s ease;
+    border-radius: 6px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .sub-row.row-active .row-edit-input,
+  .sub-row.row-active .row-chips {
+    border-color: var(--accent) !important;
+    background: rgba(255, 214, 0, 0.07) !important;
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  .side-btn.play { color: var(--accent); opacity: 0.45; }
+  .side-btn.play:hover { opacity: 1; }
+  @keyframes fi { from { opacity:0; transform:translateY(3px); } to { opacity:1; transform:translateY(0); } }
+
+  .row-num {
+    font-size: 10px;
+    color: var(--text-dim);
+    min-width: 24px;
+    text-align: right;
+    flex-shrink: 0;
+    padding-bottom: 2px;
+  }
+
+  /* ── EDIT MODE row ── */
+  .row-edit-input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+    line-height: 1.4;
+  }
+  .row-edit-input:focus { border-color: var(--accent); }
+  .row-edit-input.over { border-color: var(--error); }
+
+  /* ── HIGHLIGHT MODE row ── */
+  .row-chips {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    align-items: center;
+    min-height: 36px;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.1s;
+    border: 1px solid transparent;
+    user-select: none;
+    line-height: 1.6;
+  }
+  .chip:hover { background: var(--surface2); border-color: var(--border); }
+  .chip.on { font-weight:600; background:var(--surface2); border-color:var(--text); box-shadow:inset 0 0 0 1px var(--text); }
+
+  .row-side {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+
+  .side-btn {
+    width: 22px; height: 22px;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.1s;
+  }
+  .side-btn:hover { background: var(--surface2); color: var(--text); }
+  .side-btn.del:hover { color: var(--error); }
+
+  .char-cnt {
+    font-size: 10px;
+    color: var(--text-dim);
+    min-width: 24px;
+    text-align: right;
+    flex-shrink: 0;
+    padding-bottom: 2px;
+  }
+  .char-cnt.over { color: var(--error); }
+
+  /* Modal */
+  .modal-bg {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+    display: none; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  .modal-bg.show { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    width: 380px;
+    max-width: 90vw;
+  }
+  .modal-title { font-family: 'Unbounded', sans-serif; font-size: 13px; margin-bottom: 14px; }
+  .modal-foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.settings-note {font-size:11px;color:var(--text-dim);line-height:1.6;margin:6px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🎬 <span>СУБТИТРЫ</span></div>
+  <div class="header-right">
+    <span id="subCount" style="font-size:11px;color:var(--text-dim)"></span>
+    <button class="btn btn-green" id="dlBtn" style="display:none" onclick="downloadSRT()">↓ Скачать SRT</button>
+<button class="btn btn-yellow" id="buildBtn" onclick="buildSRT()" disabled>Собрать SRT</button>
+  </div>
+</header>
+
+<main>
+  <aside class="sidebar">
+
+    <div class="sb-section">
+      <div class="sb-label">Аудио файл</div>
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fi').click()">
+        <div class="icon">🎵</div>
+        <div class="hint"><b>Выбери или перетащи файл</b>mp3, m4a, wav, flac, ogg</div>
+      </div>
+      <input type="file" id="fi" style="display:none" accept=".mp3,.m4a,.mp4,.wav,.flac,.ogg,.webm">
+      <div class="file-chip" id="fileChip">
+        <span>🎵</span>
+        <span class="file-chip-name" id="fileName"></span>
+        <span class="file-chip-rm" onclick="removeFile()">×</span>
+      </div>
+      <div class="status" id="statusBar"></div>
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <button class="btn btn-yellow" id="trBtn" style="flex:1" onclick="startTranscription()" disabled>Транскрибировать</button>
+        <button onclick="document.getElementById('trSettingsModal').classList.add('show')"
+          style="width:38px;height:38px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:all 0.15s;flex-shrink:0"
+          onmouseover="this.style.borderColor='var(--accent)'"
+          onmouseout="this.style.borderColor='var(--border)'"
+          title="Настройки транскрипции">⚙️</button>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-label">Настройки</div>
+
+      <div class="field">
+        <label class="field-label" for="transcriptionProvider">Где распознавать</label>
+        <select id="transcriptionProvider" class="field-input" onchange="updateProviderUI()">
+          <option value="local">На компьютере</option>
+          <option value="groq">В облаке · Groq</option>
+        </select>
+      </div>
+      <div id="localSection">
+        <div class="field">
+          <label class="field-label" for="localModelSelect">Локальная модель</label>
+          <select id="localModelSelect" class="field-input">
+            <option value="">— загрузка моделей...</option>
+          </select>
+        </div>
+        <p class="settings-note">Аудио обрабатывается на этом компьютере. Модель должна находиться в папке models/.</p>
+        <details class="settings-note">
+          <summary>Как скачать модель</summary>
+          <p>В окружении приложения выполни:</p>
+          <code style="display:block;overflow-wrap:anywhere;user-select:all">python -c "from huggingface_hub import snapshot_download; snapshot_download('Systran/faster-whisper-large-v3', local_dir='models/faster-whisper-large-v3')"</code>
+        </details>
+      </div>
+      <div id="groqSection" style="display:none">
+        <div class="field">
+          <label class="field-label" for="groqModel">Модель Groq</label>
+          <select id="groqModel" class="field-input">
+            <option value="whisper-large-v3-turbo">Whisper Large v3 Turbo</option>
+            <option value="whisper-large-v3">Whisper Large v3</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label" for="groqKey">API-ключ Groq</label>
+          <input id="groqKey" class="field-input" type="password" autocomplete="off" placeholder="Вставь ключ gsk_…">
+          <div id="groqKeyStatus" class="settings-note" role="status">Ключ не сохранён</div>
+          <button class="tb-btn" type="button" onclick="clearGroqKey()">Удалить сохранённый ключ</button>
+        </div>
+        <p class="settings-note">Аудио отправляется в Groq. Скачивать модель не нужно. Бесплатный тариф имеет лимиты; доступность зависит от аккаунта.</p>
+        <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-size:11px">Получить API-ключ ↗</a>
+      </div>
+      <button class="btn btn-yellow" style="width:100%;margin-top:12px" onclick="saveTranscriptionSettings()">Сохранить настройки</button>
+      <div id="transcriptionSettingsStatus" class="settings-note" role="status"></div>
+    </div>
+
+    <div class="hints-block">
+      <div class="sb-label" style="margin-bottom:8px">Режим редактирования</div>
+      <span class="k">Enter</span> — разбить строку в месте курсора<br>
+      <span class="k">Enter</span> в конце строки — добавить строку ниже<br>
+      <span class="k">Backspace</span> в начале строки — объединить с предыдущей<br>
+      <span class="k">Backspace</span> в пустой строке — удалить строку<br>
+      <span class="k">Delete</span> в конце строки — объединить со следующей<br>
+      <span class="k">↑</span> <span class="k">↓</span> — перемещение между строками<br>
+      <span class="k">+</span> — добавить строку ниже<br>
+      <span class="k">×</span> — удалить строку<br>
+      <span class="k">Cmd+Z</span> — отменить действие<br>
+      <span class="k">Cmd+Shift+Z</span> — повторить действие<br>
+      <br>
+      <div class="sb-label" style="margin-bottom:8px">Режим выделения</div>
+      <span class="k">клик</span> на слово — сохранить его регистр / снять отметку
+    </div>
+
+  </aside>
+
+  <!-- Audio Player Bar -->
+  <div id="playerBar" style="display:none;position:fixed;bottom:0;left:0;right:0;height:54px;background:var(--surface);border-top:1px solid var(--border);z-index:200;align-items:center;gap:12px;padding:0 18px;box-sizing:border-box">
+    <button id="playBtn" onclick="togglePlay()" title="Пробел" style="width:32px;height:32px;border-radius:50%;background:var(--accent);border:none;cursor:pointer;font-size:14px;color:#000;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:bold">&#9654;</button>
+    <span id="playerTime" style="font-size:11px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;flex-shrink:0;min-width:96px">0:00 / 0:00</span>
+    <div id="progressBar" onclick="seekFromBar(event)" style="flex:1;height:4px;background:var(--border);border-radius:2px;cursor:pointer;position:relative">
+      <div id="progressFill" style="position:absolute;top:0;left:0;height:100%;background:var(--accent);border-radius:2px;width:0%;pointer-events:none"></div>
+    </div>
+    <audio id="audioPlayer" preload="metadata"
+      ontimeupdate="onAudioTick()"
+      onloadedmetadata="onAudioLoaded()"
+      onended="document.getElementById('playBtn').innerHTML='&#9654;'">
+    </audio>
+  </div>
+
+  <section class="editor" id="editorSection">
+    <div class="toolbar">
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="modeEdit" onclick="setMode('edit')">✏️ Редактирование</button>
+        <button class="mode-btn" id="modeCase" onclick="setMode('highlight')">🔤 Выделение</button>
+        <button class="mode-btn" id="modeAI" onclick="setMode('ai')">✦ Разбивка ИИ · эксперимент</button>
+      </div>
+      <div class="tb-sep"></div>
+      <button class="tb-btn" id="stripPunct" onclick="stripTrailingPunct()" title="Удалить точки и запятые в конце каждого субтитра">Убрать . ,</button>
+      <div class="tb-sep"></div>
+      <span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Макс. символов:</span>
+      <input type="number" id="maxChars" value="24" min="1" max="99"
+        oninput="renderRows()"
+        style="width:52px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;outline:none;text-align:center">
+      <button class="tb-btn" id="clearCaseSelection" style="display:none" onclick="clearCaseSelection()">Снять выделения</button>
+      <button class="tb-btn" id="selectAllCaseWords" style="display:none" onclick="selectAllCaseWords()">Выделить всё</button>
+      <button class="tb-btn" id="applyLowercase" style="display:none" onclick="lowercaseUnselected()">Строчные, кроме выделенных</button>
+      <span id="caseHint" style="display:none;font-size:11px;color:var(--text-dim)">Выделенные слова сохраняют регистр</span>
+    </div>
+    <div id="aiPanel" style="display:none;padding:20px;overflow:auto">
+      <h3 style="font-size:15px">Смысловая разбивка · GPT OSS 120B</h3>
+      <p class="settings-note">Один запрос на весь текст редактора. Текст отправляется в Groq; слова и их порядок сохраняются. До 600 слов. Лимит берётся из поля «Макс. символов».</p>
+      <p class="settings-note">Промпт можно изменить в файле prompts/subtitle_split.md. Результат сначала появится здесь, ручные титры заменятся только после применения.</p>
+      <button class="btn btn-yellow" id="aiSuggest" onclick="requestAISplit()">Предложить разбивку</button>
+      <p id="aiStatus" class="settings-note" role="status"></p>
+      <div id="aiPreview"></div>
+      <div id="aiActions" style="display:none;margin-top:14px;gap:10px">
+        <button class="btn btn-green" onclick="applyAISplit()">Применить разбивку</button>
+        <button class="tb-btn" id="aiRegenerate" onclick="requestAISplit()">Перегенерировать</button>
+        <button class="tb-btn" onclick="discardAISplit()">Отменить предложение</button>
+      </div>
+    </div>
+    <div class="sub-list" id="subList">
+      <div class="empty-state" id="emptyState">
+        <div class="ei">🎙</div>
+        <div class="et">Загрузи аудио и транскрибируй</div>
+        <div class="es">Текст появится здесь.<br>В режиме редактирования — правь текст.<br>В режиме выделения — отметь имена и названия, затем примени строчные.</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Transcription settings modal -->
+<div class="modal-bg" id="trSettingsModal">
+  <div class="modal">
+    <div class="modal-title">⚙️ Настройки транскрипции</div>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:16px;line-height:1.7">Выбери как разбивать текст на субтитры после транскрипции</p>
+
+    <div id="trModeAuto" onclick="selectTrMode('auto')"
+      style="padding:14px 16px;border-radius:8px;border:1px solid var(--accent);background:rgba(255,251,0,0.05);cursor:pointer;margin-bottom:8px;transition:all 0.15s">
+      <div style="font-size:12px;font-weight:700;margin-bottom:4px">✦ По длине строки <span style="font-size:10px;color:var(--accent);font-weight:400">(по умолчанию)</span></div>
+      <div style="font-size:11px;color:var(--text-dim);line-height:1.6">Текст разбивается автоматически по количеству символов. Длина регулируется полем «Макс. символов» в редакторе.</div>
+    </div>
+
+    <div id="trModePunct" onclick="selectTrMode('punct')"
+      style="padding:14px 16px;border-radius:8px;border:1px solid var(--border);cursor:pointer;transition:all 0.15s">
+      <div style="font-size:12px;font-weight:700;margin-bottom:4px">✦ По знакам препинания</div>
+      <div style="font-size:11px;color:var(--text-dim);line-height:1.6">Новый субтитр начинается после каждой точки, запятой, восклицательного и вопросительного знака.</div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn btn-yellow" onclick="document.getElementById('trSettingsModal').classList.remove('show')">Готово</button>
+    </div>
+  </div>
+</div>
+
+
+
+<div class="modal-bg" id="doneModal">
+  <div class="modal">
+    <div class="modal-title">🎉 SRT готов!</div>
+    <p style="font-size:12px;color:var(--text-dim);line-height:1.8" id="doneMsg"></p>
+    <div class="modal-foot">
+      <button class="btn btn-dim" onclick="document.getElementById('doneModal').classList.remove('show')">Закрыть</button>
+      <button class="btn btn-green" onclick="downloadSRT()">↓ Скачать SRT</button>
+    </div>
+  </div>
+</div>
+
+<script src="/case-tools.js"></script>
+<script src="/editor.js"></script>
+</body>
+</html>
