@@ -445,8 +445,11 @@
         <p class="settings-note">Аудио обрабатывается на этом компьютере. Модель должна находиться в папке models/.</p>
         <details class="settings-note">
           <summary>Как скачать модель</summary>
-          <p>В окружении приложения выполни:</p>
-          <code style="display:block;overflow-wrap:anywhere;user-select:all">python -c "from huggingface_hub import snapshot_download; snapshot_download('Systran/faster-whisper-large-v3', local_dir='models/faster-whisper-large-v3')"</code>
+          <p>Скачай файлы модели со страницы
+            <a href="https://huggingface.co/dropbox-dash/faster-whisper-large-v3-turbo/tree/main" target="_blank" rel="noopener noreferrer">Hugging Face · Large v3 Turbo</a>
+            в отдельную подпапку models/. Нужны model.bin, config.json, tokenizer.json,
+            файл vocabulary и preprocessor_config.json, если он есть.
+            Подробная инструкция находится в models/README.md.</p>
         </details>
       </div>
       <div id="groqSection" style="display:none">

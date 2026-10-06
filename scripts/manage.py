@@ -1,4 +1,4 @@
-"""Portable setup, startup and model download commands (Python 3.11)."""
+"""Portable setup and startup commands (Python 3.11)."""
 import argparse
 import importlib.metadata
 import json
@@ -16,7 +16,6 @@ import webbrowser
 
 ROOT = Path(__file__).resolve().parent.parent
 PYTHON = ROOT / '.venv' / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
-MODELS = ('tiny', 'base', 'small', 'medium', 'large-v3', 'large-v3-turbo')
 
 
 def check_dependencies():
@@ -85,41 +84,11 @@ def start(port, open_browser=True):
     uvicorn.run('app:app', host='127.0.0.1', port=port)
 
 
-def download(name):
-    check_dependencies()
-    if not name:
-        print('Local models (larger models need more disk space and CPU time):')
-        for i, model in enumerate(MODELS, 1):
-            print(f'{i}. {model}')
-        choice = input('Number, or Enter to cancel: ').strip()
-        if not choice:
-            return
-        if not choice.isdigit() or not 1 <= int(choice) <= len(MODELS):
-            raise RuntimeError('Invalid model number.')
-        name = MODELS[int(choice) - 1]
-    destination = ROOT / 'models' / name
-    if (destination / 'model.bin').exists() and (destination / 'config.json').exists():
-        print(f'Model already installed: {destination}')
-        return
-    os.environ.setdefault('HF_HOME', str(ROOT / '.cache/huggingface'))
-    from faster_whisper.utils import download_model
-    staging = ROOT / 'models' / '.downloads' / name
-    staging.mkdir(parents=True, exist_ok=True)
-    download_model(name, output_dir=str(staging))
-    if not all((staging / file).exists() for file in ('config.json', 'model.bin', 'tokenizer.json')):
-        raise RuntimeError('Incomplete model download. Run this command again to resume.')
-    if destination.exists():
-        raise RuntimeError(f'Destination exists: {destination}. Inspect it before retrying.')
-    staging.rename(destination)
-    print(f'Model installed: {destination}. Select it in the application settings.')
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('install', 'start', 'download-model', 'check'))
+    parser.add_argument('action', choices=('install', 'start', 'check'))
     parser.add_argument('--port', type=int, default=5002)
     parser.add_argument('--no-browser', action='store_true')
-    parser.add_argument('--model', choices=MODELS)
     args = parser.parse_args()
     os.chdir(ROOT)
     try:
@@ -129,8 +98,6 @@ def main():
             if not 1 <= args.port <= 65535:
                 raise RuntimeError('Port must be between 1 and 65535.')
             start(args.port, not args.no_browser)
-        elif args.action == 'download-model':
-            download(args.model)
         else:
             check_dependencies()
             print('Dependencies OK.')

@@ -3,7 +3,8 @@ __pycache__/
 *.py[cod]
 .env
 .DS_Store
-models/
+models/*
+!models/README.md
 temp/
 _tmp_*
 .cache/

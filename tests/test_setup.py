@@ -5,7 +5,6 @@ import unittest
 from unittest.mock import patch
 
 import config
-from scripts import manage
 from fastapi.testclient import TestClient
 import app
 
@@ -29,24 +28,6 @@ class PackagingTests(unittest.TestCase):
                 self.assertEqual(config.load_config()['GROQ_API_KEY'], 'file-secret')
         finally:
             config._env_path = old_path
-
-    def test_incomplete_download_is_hidden_and_completed_download_is_available(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            def fake_download(name, output_dir):
-                for file in ('config.json', 'model.bin', 'tokenizer.json'):
-                    (Path(output_dir) / file).write_text('{}')
-            with patch.object(manage, 'ROOT', root), patch.object(manage, 'check_dependencies'), \
-                 patch('faster_whisper.utils.download_model', side_effect=fake_download) as download, \
-                 patch.object(app, 'MODELS_DIR', root / 'models'):
-                staging = root / 'models/.downloads/tiny'
-                staging.mkdir(parents=True)
-                (staging / 'config.json').write_text('{}')
-                self.assertEqual(app.list_local_models()['models'], [])
-                manage.download('tiny')
-                self.assertEqual(app.list_local_models()['models'], ['tiny'])
-                manage.download('tiny')
-                self.assertEqual(download.call_count, 1)
 
     def test_health_identifies_the_application(self):
         with TestClient(app.app) as client:
