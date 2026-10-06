@@ -531,7 +531,12 @@
       <p class="settings-note">Промпт можно изменить в файле prompts/subtitle_split.md. Результат сначала появится здесь, ручные титры заменятся только после применения.</p>
       <button class="btn btn-yellow" id="aiSuggest" onclick="requestAISplit()">Предложить разбивку</button>
       <p id="aiStatus" class="settings-note" role="status"></p>
+      <ul id="aiWarnings" class="settings-note" style="color:#e8a849;display:none"></ul>
       <div id="aiPreview"></div>
+      <details id="aiRawPanel" style="display:none;margin-top:14px" class="settings-note">
+        <summary>Исходный ответ модели</summary>
+        <pre id="aiRawResponse" style="white-space:pre-wrap;overflow-wrap:anywhere;user-select:text"></pre>
+      </details>
       <div id="aiActions" style="display:none;margin-top:14px;gap:10px">
         <button class="btn btn-green" onclick="applyAISplit()">Применить разбивку</button>
         <button class="tb-btn" id="aiRegenerate" onclick="requestAISplit()">Перегенерировать</button>

@@ -24,6 +24,41 @@ def validate_boundaries(words, ends):
     return lines
 
 
+def preview_response(words, raw_response, max_chars, finish_reason):
+    """Keep every received answer visible; repair boundaries without changing words."""
+    warnings = []
+    if finish_reason != "stop":
+        warnings.append(f"Ответ завершился с причиной {finish_reason or 'не указана'}; показан полученный фрагмент.")
+    try:
+        data = json.loads(raw_response)
+        raw_ends = data.get("ends") if isinstance(data, dict) else None
+    except (ValueError, TypeError):
+        raw_ends = None
+        warnings.append("Ответ не удалось разобрать как JSON. Исходный ответ показан ниже.")
+    if not isinstance(raw_ends, list):
+        warnings.append("Нет списка ends. Для предпросмотра весь текст оставлен одним титром.")
+        raw_ends = []
+    accepted = []
+    for index, end in enumerate(raw_ends, 1):
+        if type(end) is not int:
+            warnings.append(f"Граница №{index}: {end!r} — не целое число, пропущена.")
+        elif not 1 <= end <= len(words):
+            warnings.append(f"Граница №{index}: {end} вне диапазона 1–{len(words)}, пропущена.")
+        else:
+            accepted.append(end)
+    ends = sorted(set(accepted))
+    if accepted != ends:
+        warnings.append("Границы упорядочены; повторяющиеся позиции удалены.")
+    if not ends or ends[-1] != len(words):
+        ends.append(len(words))
+        warnings.append(f"Добавлена последняя граница {len(words)}, чтобы сохранить весь текст.")
+    lines = validate_boundaries(words, ends)
+    overlong = [{"index": i + 1, "length": len(text)} for i, text in enumerate(lines) if len(text) > max_chars]
+    return {"lines": lines, "ends": ends, "model": MODEL, "overlong": overlong,
+            "max_chars": max_chars, "warnings": warnings, "raw_response": raw_response,
+            "finish_reason": finish_reason}
+
+
 def suggest_split(texts, max_chars, api_key, previous_ends=None):
     words = [word for text in texts for word in text.split()]
     if not words:
@@ -42,7 +77,7 @@ def suggest_split(texts, max_chars, api_key, previous_ends=None):
             result = client.chat.completions.create(
                 model=MODEL,
                 messages=[{"role": "system", "content": prompt},
-                          {"role": "user", "content": json.dumps({"max_chars": max_chars, "words": words, "previous_ends": previous_ends}, ensure_ascii=False)}],
+                          {"role": "user", "content": json.dumps({"max_chars": max_chars, "word_count": len(words), "words": [{"index": i, "text": word} for i, word in enumerate(words, 1)], "previous_ends": previous_ends}, ensure_ascii=False)}],
                 response_format={"type": "json_schema", "json_schema": {"name": "caption_boundaries", "strict": True, "schema": schema}},
                 reasoning_effort="low",
                 temperature=0.8,
@@ -58,12 +93,7 @@ def suggest_split(texts, max_chars, api_key, previous_ends=None):
         else:
             message = "Groq не смог выполнить разбивку. Исходные титры сохранены."
         raise ValueError(message) from None
-    try:
-        if result.choices[0].finish_reason != "stop":
-            raise ValueError()
-        ends = json.loads(result.choices[0].message.content)["ends"]
-    except (ValueError, KeyError, IndexError, TypeError):
-        raise ValueError("ИИ вернул неполный ответ. Исходные титры сохранены.") from None
-    lines = validate_boundaries(words, ends)
-    overlong = [{"index": i + 1, "length": len(text)} for i, text in enumerate(lines) if len(text) > max_chars]
-    return {"lines": lines, "ends": ends, "model": MODEL, "overlong": overlong, "max_chars": max_chars}
+    choice = result.choices[0] if result.choices else None
+    raw_response = (choice.message.content or "") if choice else ""
+    finish_reason = choice.finish_reason if choice else None
+    return preview_response(words, raw_response, max_chars, finish_reason)

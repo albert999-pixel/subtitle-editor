@@ -501,6 +501,17 @@ async function requestAISplit() {
     if (!res.ok) throw new Error(data.detail || 'Не удалось получить разбивку');
     if (splitInputSignature() !== signature) throw new Error('Текст или лимит изменился во время запроса. Получи новое предложение.');
     aiProposal = {signature, lines:data.lines, ends:data.ends};
+    document.getElementById('aiRawResponse').textContent = data.raw_response || '(пустой ответ)';
+    document.getElementById('aiRawPanel').style.display = 'block';
+    const warnings = document.getElementById('aiWarnings');
+    warnings.replaceChildren();
+    (data.warnings || []).forEach(message => {
+      const item = document.createElement('li');
+      item.textContent = message;
+      warnings.appendChild(item);
+    });
+    warnings.style.display = data.warnings?.length ? 'block' : 'none';
+    document.getElementById('aiRawPanel').open = Boolean(data.warnings?.length);
     const preview = document.getElementById('aiPreview');
     preview.replaceChildren();
     data.lines.forEach((text, index) => {
@@ -513,7 +524,7 @@ async function requestAISplit() {
       preview.appendChild(item);
     });
     document.getElementById('aiActions').style.display = 'flex';
-    status.textContent = `Предложено титров: ${data.lines.length}. Все слова сохранены. Превышений лимита ${snapshot.max}: ${(data.overlong || []).length}. Можно применить любой вариант или перегенерировать.`;
+    status.textContent = `Предпросмотр титров: ${data.lines.length}.${data.warnings?.length ? " Границы исправлены для сохранения текста; смотри предупреждения и исходный ответ." : ""} Все слова сохранены. Превышений лимита ${snapshot.max}: ${(data.overlong || []).length}. Можно применить любой вариант или перегенерировать.`;
   } catch (error) {
     status.textContent = error.message;
   } finally {
@@ -524,6 +535,10 @@ async function requestAISplit() {
 function discardAISplit() {
   aiProposal = null;
   document.getElementById('aiPreview').replaceChildren();
+  document.getElementById('aiRawResponse').textContent = '';
+  document.getElementById('aiRawPanel').style.display = 'none';
+  document.getElementById('aiWarnings').replaceChildren();
+  document.getElementById('aiWarnings').style.display = 'none';
   document.getElementById('aiActions').style.display = 'none';
   document.getElementById('aiStatus').textContent = '';
 }
