@@ -142,6 +142,28 @@ class GroqTests(unittest.TestCase):
                 transcribe_with_groq(audio, 'test-secret', 'whisper-large-v3')
             self.assertNotIn('test-secret', str(error.exception))
 
+    def test_forbidden_does_not_assume_a_key_problem_or_echo_secrets(self):
+        import httpx
+        from groq import PermissionDeniedError
+        audio = self.root / 'sample.wav'
+        audio.write_bytes(b'test')
+        response = httpx.Response(403, request=httpx.Request('POST', 'https://api.groq.com'))
+        cases = [
+            (None, 'HTTP 403'),
+            ({'error': {'message': 'test-secret'}}, 'HTTP 403'),
+            ({'error': {'code': 'model_permission_blocked_org'}}, 'запрещена в настройках'),
+            ({'error': {'code': 'model_permission_blocked_project'}}, 'запрещена в настройках'),
+            ({'error': {'code': 'unsupported_country_region_territory'}}, 'страны или региона'),
+        ]
+        for body, expected in cases:
+            with self.subTest(body=body), patch('groq.Groq') as constructor:
+                client = constructor.return_value.__enter__.return_value
+                client.audio.transcriptions.create.side_effect = PermissionDeniedError('test-secret', response=response, body=body)
+                with self.assertRaisesRegex(RuntimeError, expected) as error:
+                    transcribe_with_groq(audio, 'test-secret', 'whisper-large-v3-turbo')
+                self.assertNotIn('test-secret', str(error.exception))
+                self.assertNotIn('у ключа нет доступа', str(error.exception))
+
 
 if __name__ == '__main__':
     unittest.main()
