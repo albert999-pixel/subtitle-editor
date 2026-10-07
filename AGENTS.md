@@ -32,6 +32,9 @@ Subtitle Editor — локальное веб-приложение для под
 - `tests/`: Python unittest и JavaScript-проверки без дополнительных тестовых библиотек.
 
 `scripts/manage.py` и `.bat`/`.command`: установка в `.venv` и запуск.
+Windows install.bat проверяет выполнение Python 3.11 по маркеру через py -3.11
+либо python; одного exit code недостаточно из-за псевдонимов Windows.
+CI на Windows запускает именно install.bat, а не обходит его Python-командой.
 Модели скачиваются вручную с Hugging Face; инструкция — `models/README.md`.
 Скрипты скачивания удалены по просьбе пользователя.
 Dockerfile и Compose используют тот же код; настройки в volume `/data`,

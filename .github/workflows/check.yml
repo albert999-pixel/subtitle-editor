@@ -15,7 +15,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: python scripts/manage.py install
+      - if: runner.os != 'Windows'
+        run: python scripts/manage.py install
+      - name: Windows installer
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: install.bat <nul
       - name: Python tests and dependencies
         shell: bash
         run: |
